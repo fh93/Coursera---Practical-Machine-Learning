@@ -1,0 +1,146 @@
+---
+title: "Practical Machine Learning - Course project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. This is the "classe" variable in the training set. More information is available from the website here: [http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har]
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+
+* exactly according to the specification (Class A) 
+* throwing the elbows to the front (Class B) 
+* lifting the dumbbell only halfway (Class C) 
+* lowering the dumbbell only halfway (Class D)  
+* throwing the hips to the front (Class E)
+
+Body-sensors were placed on four different parts: the arm, the belt, the forearm and on the dumpbell. 
+
+## Part 1: Loading and exploring the data
+
+Load the necessary packages.
+
+```{r loading, echo=FALSE}
+library(caret)
+library(rattle)
+```
+
+Load the data and explore it to get a sense of what is in the dataset.
+```{r}
+data_training = read.csv("pml-training.csv")
+data_testing = read.csv("pml-testing.csv")
+```
+
+```{r}
+print(dim(data_testing))
+print(dim(data_training))
+```
+
+```{r exploring}
+summary(data_training$classe)
+```
+
+```{r}
+str(data_training)
+```
+
+## Part 2: Preparing the data
+
+Before starting with the actual analysis the data has to be prepared. The current dataset contains 160 variables, which is a lot and hence we want te reduce this. 
+
+First we remove columns 1:7, since they contain information that is not relevant to the investigation. These include features like index, name and timestamp.
+
+```{r pressure, echo=FALSE}
+data_training <- data_training[,-c(1:7)]
+data_testing<- data_testing[,-c(1:7)]
+print(dim(data_training))
+```
+
+Next we will delete the columns where over 90% of the observations is NA, and thus only keep those with less than 90% of NA values.
+
+```{r}
+na_cols <- colSums(is.na(data_training))/nrow(data_training) < 0.9
+data_training <- data_training[,c(na_cols)]
+data_testing <- data_testing[,c(na_cols)]
+print(dim(data_training))
+```
+
+This reduces the number of variables from 153 to 86.
+
+To further reduce the number of variables for analysis we will look a the variance of the variables. The variables with a variance near zero will be exlcuded from the analysis.
+
+```{r}
+nz_cols <- nearZeroVar(data_training)
+data_training <- data_training[, -nz_cols]
+data_testing <- data_testing[, -nz_cols]
+print(dim(data_training))
+```
+AS can be seen the set of predictors is now reduced to 53 variables. 
+
+Now we will split the training data into a training set and a test set. Important is to set the seed so that the results are reproducible. 
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=data_training$classe, p=0.7, list=FALSE)
+training <- data_training[inTrain,]
+testing <- data_training[-inTrain,]
+```
+
+## Part 3: Fitting the model
+
+### Decision tree
+For this classification problem we first try to fit a decision tree model using the traing function of the caret package with rpart as specified method.
+
+```{r}
+model_tree <- train(classe ~., data=training, method="rpart")
+```
+
+```{r}
+fancyRpartPlot(model_tree$finalModel, sub = "Decision tree")
+```
+
+Prediction using the testing data
+```{r}
+prediction_tree <- predict(model_tree, newdata=testing)
+confusionMatrix(prediction_tree, testing$classe)
+```
+
+The prediction accuracy of this model is 0.489, which is quite low. We ideally want a higher accuracy.
+
+### Random forest
+The second model we will fit is the random forest model. We do this again by using the train function from the caret package but now with "rf" as the specified method. 
+
+```{r}
+train_control <- trainControl(method="cv", number=5)
+model_rf <- train(classe ~., data=training, method="rf", trControl=train_control)
+```
+
+Prediction using the testing data
+```{r}
+prediction_rf <- predict(model_rf, newdata=testing)
+confusionMatrix(prediction_rf, testing$classe)
+```
+
+The accuracy of the random forest model is 0.995 when using cross-validation with k=5 folds. This accuracy is very high and clearly higher than the accuracy of the decision tree model. Thus we choose the random forest model as the best prediction model for this dataset. 
+
+```{r}
+print(model_rf)
+```
+
+## Conlusion
+
+The random forest model has shown to be a better model than de decision tree and hence this model will be used to predict the outcomes, the classes, of the test dataset. 
+
+```{r}
+pred <- predict(model_rf, newdata = data_testing)
+pred
+```
+
+
